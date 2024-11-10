@@ -1,0 +1,38 @@
+# Remove docs preview from https://github.com/jj-preview/docs/ when the PR is
+# closed.
+name: docs-preview-cleanup
+
+permissions: read-all
+
+on:
+  pull_request_target:
+    types: [closed]
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    environment: preview
+    concurrency:
+      group: docs-preview-${{ github.event.number }}
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - run: mkdir -p empty-dir
+
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@62fec3add6773ec5dbbf18d2ee4260911aa35cf4
+        with:
+          # Note: pushing an empty dir will remove the dir entirely (which is what we want)
+          folder: empty-dir
+          repository-name: jj-preview/docs
+          branch: main
+          target-folder: 'pr-${{ github.event.number }}'
+          ssh-key: ${{ secrets.DOCS_DEPLOY_KEY }}
+          git-config-name: 'jj-docs[bot]'
+          git-config-email: 'jj-docs[bot]@users.noreply.github.io'
+          commit-message: "Remove preview for PR ${{ github.event.number }}"
+          force: false
