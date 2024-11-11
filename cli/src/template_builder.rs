@@ -162,6 +162,9 @@ pub trait IntoTemplateProperty<'a> {
 
     fn try_into_plain_text(self) -> Option<Box<dyn TemplateProperty<Output = String> + 'a>>;
     fn try_into_template(self) -> Option<Box<dyn Template + 'a>>;
+
+    /// Transforms into a property that will evaluate to `self == other`.
+    fn try_into_eq(self, other: Self) -> Option<Box<dyn TemplateProperty<Output = bool> + 'a>>;
 }
 
 pub enum CoreTemplatePropertyKind<'a> {
@@ -264,6 +267,31 @@ impl<'a> IntoTemplateProperty<'a> for CoreTemplatePropertyKind<'a> {
             CoreTemplatePropertyKind::TimestampRange(property) => Some(property.into_template()),
             CoreTemplatePropertyKind::Template(template) => Some(template),
             CoreTemplatePropertyKind::ListTemplate(template) => Some(template.into_template()),
+        }
+    }
+
+    fn try_into_eq(self, other: Self) -> Option<Box<dyn TemplateProperty<Output = bool> + 'a>> {
+        match (self, other) {
+            (CoreTemplatePropertyKind::String(lhs), CoreTemplatePropertyKind::String(rhs)) => {
+                Some(Box::new((lhs, rhs).map(|(l, r)| l == r)))
+            }
+            (CoreTemplatePropertyKind::Boolean(lhs), CoreTemplatePropertyKind::Boolean(rhs)) => {
+                Some(Box::new((lhs, rhs).map(|(l, r)| l == r)))
+            }
+            (CoreTemplatePropertyKind::Integer(lhs), CoreTemplatePropertyKind::Integer(rhs)) => {
+                Some(Box::new((lhs, rhs).map(|(l, r)| l == r)))
+            }
+            (CoreTemplatePropertyKind::String(_), _) => None,
+            (CoreTemplatePropertyKind::StringList(_), _) => None,
+            (CoreTemplatePropertyKind::Boolean(_), _) => None,
+            (CoreTemplatePropertyKind::Integer(_), _) => None,
+            (CoreTemplatePropertyKind::IntegerOpt(_), _) => None,
+            (CoreTemplatePropertyKind::Signature(_), _) => None,
+            (CoreTemplatePropertyKind::SizeHint(_), _) => None,
+            (CoreTemplatePropertyKind::Timestamp(_), _) => None,
+            (CoreTemplatePropertyKind::TimestampRange(_), _) => None,
+            (CoreTemplatePropertyKind::Template(_), _) => None,
+            (CoreTemplatePropertyKind::ListTemplate(_), _) => None,
         }
     }
 }
@@ -508,6 +536,10 @@ impl<'a, P: IntoTemplateProperty<'a>> Expression<P> {
             Some(Box::new(LabelTemplate::new(template, Literal(self.labels))))
         }
     }
+
+    pub fn try_into_eq(self, other: Self) -> Option<Box<dyn TemplateProperty<Output = bool> + 'a>> {
+        self.property.try_into_eq(other.property)
+    }
 }
 
 pub struct BuildContext<'i, P> {
@@ -591,6 +623,7 @@ fn build_binary_operation<'a, L: TemplateLanguage<'a> + ?Sized>(
     op: BinaryOp,
     lhs_node: &ExpressionNode,
     rhs_node: &ExpressionNode,
+    span: pest::Span<'_>,
 ) -> TemplateParseResult<L::Property> {
     match op {
         BinaryOp::LogicalOr => {
@@ -605,39 +638,19 @@ fn build_binary_operation<'a, L: TemplateLanguage<'a> + ?Sized>(
             let out = lhs.and_then(move |l| Ok(l && rhs.extract()?));
             Ok(L::wrap_boolean(out))
         }
-        BinaryOp::LogicalEq => {
+        BinaryOp::LogicalEq | BinaryOp::LogicalNe => {
             let lhs = build_expression(language, diagnostics, build_ctx, lhs_node)?;
             let rhs = build_expression(language, diagnostics, build_ctx, rhs_node)?;
-            // TODO: Implement as a method on Property type
-            // e.g., lhs.try_eq(rhs) -> Option<Box<dyn TemplateProperty<Output = bool>>>
-            match (lhs.type_name(), rhs.type_name()) {
-                ("Boolean", "Boolean") => {
-                    let lhs = lhs.try_into_boolean().unwrap();
-                    let rhs = rhs.try_into_boolean().unwrap();
-                    let out = lhs.and_then(move |l| Ok(l == rhs.extract()?));
-                    Ok(L::wrap_boolean(out))
-                }
-                ("Integer", "Integer") => {
-                    let lhs = lhs.try_into_integer().unwrap();
-                    let rhs = rhs.try_into_integer().unwrap();
-                    let out = lhs.and_then(move |l| Ok(l == rhs.extract()?));
-                    Ok(L::wrap_boolean(out))
-                }
-                ("String", "String") => {
-                    let lhs = lhs.try_into_plain_text().unwrap();
-                    let rhs = rhs.try_into_plain_text().unwrap();
-                    let out = lhs.and_then(move |l| Ok(l == rhs.extract()?));
-                    Ok(L::wrap_boolean(out))
-                }
-                (lhs_type @ ("Boolean" | "Integer" | "String"), rhs_type) => Err(
-                    TemplateParseError::expected_type(lhs_type, rhs_type, rhs_node.span),
-                ),
-                (lhs_type, _) => {
-                    let message = format!(
-                        r#"Expected expression of type "Boolean", "Integer", or "String", but actual type is "{lhs_type}""#
-                    );
-                    Err(TemplateParseError::expression(message, lhs_node.span))
-                }
+            let lty = lhs.type_name();
+            let rty = rhs.type_name();
+            let out = lhs.try_into_eq(rhs).ok_or_else(|| {
+                let message = format!(r#"Cannot compare expressions of type "{lty}" and "{rty}""#);
+                TemplateParseError::expression(message, span)
+            })?;
+            match op {
+                BinaryOp::LogicalEq => Ok(L::wrap_boolean(out)),
+                BinaryOp::LogicalNe => Ok(L::wrap_boolean(out.map(|eq| !eq))),
+                _ => unreachable!(),
             }
         }
     }
@@ -1381,8 +1394,15 @@ pub fn build_expression<'a, L: TemplateLanguage<'a> + ?Sized>(
             Ok(Expression::unlabeled(property))
         }
         ExpressionKind::Binary(op, lhs_node, rhs_node) => {
-            let property =
-                build_binary_operation(language, diagnostics, build_ctx, *op, lhs_node, rhs_node)?;
+            let property = build_binary_operation(
+                language,
+                diagnostics,
+                build_ctx,
+                *op,
+                lhs_node,
+                rhs_node,
+                node.span,
+            )?;
             Ok(Expression::unlabeled(property))
         }
         ExpressionKind::Concat(nodes) => {
@@ -1712,14 +1732,14 @@ mod tests {
         env.add_keyword("description", || L::wrap_string(Literal("".to_owned())));
         env.add_keyword("empty", || L::wrap_boolean(Literal(true)));
 
-        insta::assert_snapshot!(env.parse_err(r#"description ()"#), @r#"
+        insta::assert_snapshot!(env.parse_err(r#"description ()"#), @r"
          --> 1:13
           |
         1 | description ()
           |             ^---
           |
-          = expected <EOI>, `++`, `||`, `&&`, or `==`
-        "#);
+          = expected <EOI>, `++`, `||`, `&&`, `==`, or `!=`
+        ");
 
         insta::assert_snapshot!(env.parse_err(r#"foo"#), @r###"
          --> 1:1
@@ -1764,60 +1784,60 @@ mod tests {
           = Expected expression of type "Boolean", but actual type is "Integer"
         "###);
         insta::assert_snapshot!(env.parse_err(r#"true == 1"#), @r#"
-         --> 1:9
+         --> 1:1
           |
         1 | true == 1
-          |         ^
+          | ^-------^
           |
-          = Expected expression of type "Boolean", but actual type is "Integer"
+          = Cannot compare expressions of type "Boolean" and "Integer"
         "#);
-        insta::assert_snapshot!(env.parse_err(r#"true == 'a'"#), @r#"
-         --> 1:9
+        insta::assert_snapshot!(env.parse_err(r#"true != 'a'"#), @r#"
+         --> 1:1
           |
-        1 | true == 'a'
-          |         ^-^
+        1 | true != 'a'
+          | ^---------^
           |
-          = Expected expression of type "Boolean", but actual type is "String"
+          = Cannot compare expressions of type "Boolean" and "String"
         "#);
         insta::assert_snapshot!(env.parse_err(r#"1 == true"#), @r#"
-         --> 1:6
+         --> 1:1
           |
         1 | 1 == true
-          |      ^--^
+          | ^-------^
           |
-          = Expected expression of type "Integer", but actual type is "Boolean"
+          = Cannot compare expressions of type "Integer" and "Boolean"
         "#);
-        insta::assert_snapshot!(env.parse_err(r#"1 == 'a'"#), @r#"
-         --> 1:6
+        insta::assert_snapshot!(env.parse_err(r#"1 != 'a'"#), @r#"
+         --> 1:1
           |
-        1 | 1 == 'a'
-          |      ^-^
+        1 | 1 != 'a'
+          | ^------^
           |
-          = Expected expression of type "Integer", but actual type is "String"
+          = Cannot compare expressions of type "Integer" and "String"
         "#);
         insta::assert_snapshot!(env.parse_err(r#"'a' == true"#), @r#"
-         --> 1:8
+         --> 1:1
           |
         1 | 'a' == true
-          |        ^--^
+          | ^---------^
           |
-          = Expected expression of type "String", but actual type is "Boolean"
+          = Cannot compare expressions of type "String" and "Boolean"
         "#);
-        insta::assert_snapshot!(env.parse_err(r#"'a' == 1"#), @r#"
-         --> 1:8
+        insta::assert_snapshot!(env.parse_err(r#"'a' != 1"#), @r#"
+         --> 1:1
           |
-        1 | 'a' == 1
-          |        ^
+        1 | 'a' != 1
+          | ^------^
           |
-          = Expected expression of type "String", but actual type is "Integer"
+          = Cannot compare expressions of type "String" and "Integer"
         "#);
         insta::assert_snapshot!(env.parse_err(r#"'a' == label("", "")"#), @r#"
-         --> 1:8
+         --> 1:1
           |
         1 | 'a' == label("", "")
-          |        ^-----------^
+          | ^------------------^
           |
-          = Expected expression of type "String", but actual type is "Template"
+          = Cannot compare expressions of type "String" and "Template"
         "#);
 
         insta::assert_snapshot!(env.parse_err(r#"description.first_line().foo()"#), @r###"
@@ -2038,10 +2058,16 @@ mod tests {
         insta::assert_snapshot!(env.render_ok(r#"false && true"#), @"false");
         insta::assert_snapshot!(env.render_ok(r#"true == true"#), @"true");
         insta::assert_snapshot!(env.render_ok(r#"true == false"#), @"false");
+        insta::assert_snapshot!(env.render_ok(r#"true != true"#), @"false");
+        insta::assert_snapshot!(env.render_ok(r#"true != false"#), @"true");
         insta::assert_snapshot!(env.render_ok(r#"1 == 1"#), @"true");
         insta::assert_snapshot!(env.render_ok(r#"1 == 2"#), @"false");
+        insta::assert_snapshot!(env.render_ok(r#"1 != 1"#), @"false");
+        insta::assert_snapshot!(env.render_ok(r#"1 != 2"#), @"true");
         insta::assert_snapshot!(env.render_ok(r#"'a' == 'a'"#), @"true");
         insta::assert_snapshot!(env.render_ok(r#"'a' == 'b'"#), @"false");
+        insta::assert_snapshot!(env.render_ok(r#"'a' != 'a'"#), @"false");
+        insta::assert_snapshot!(env.render_ok(r#"'a' != 'b'"#), @"true");
 
         insta::assert_snapshot!(env.render_ok(r#" !"" "#), @"true");
         insta::assert_snapshot!(env.render_ok(r#" "" || "a".lines() "#), @"true");
