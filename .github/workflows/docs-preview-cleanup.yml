@@ -7,6 +7,8 @@ on:
   # This always uses the workflow file from the main branch
   pull_request_target:
     types: [closed]
+    
+# yes
 
 jobs:
   cleanup:
