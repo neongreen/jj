@@ -8,3 +8,4 @@ jobs:
       - run: |
           echo "I am the base version of the workflow"
           echo
+          echo "this line comes from the PR"
