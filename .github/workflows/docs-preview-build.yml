@@ -27,7 +27,7 @@ on:
     # When the PR is closed, we will push a dir with a special file to tell the
     # deploy workflow to remove the preview.
     types: [opened, reopened, synchronize, closed]
-    branches: [main]
+    branches: [main, xxx]
 
 jobs:
   upload-pr-number:
