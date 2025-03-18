@@ -1,0 +1,54 @@
+#:schema https://mise.jdx.dev/schema/mise.json
+
+[tools]
+uv = "0.5.1"
+
+[tasks."setup:rust"]
+description = "Install the correct Rust and rustfmt versions, using rustup"
+run = [
+  "rustup toolchain install 1.84",
+  # We want rustfmt from nightly
+  "rustup toolchain install nightly --profile minimal --component rustfmt",
+]
+
+# Note: might be easier to use cargo binstall, especially on Windows
+[tasks."setup:extra-tools"]
+description = "Build nextest, insta, bacon"
+run = [
+  "cargo +1.84 install --locked bacon",
+  "cargo +1.84 install --locked cargo-insta",
+  "cargo +1.84 install --locked cargo-nextest",
+]
+
+[tasks."format"]
+description = "Format the code"
+run = "cargo +nightly fmt"
+
+[tasks."lint"]
+description = "Lint the code"
+run = "cargo +1.84 clippy --workspace --all-targets"
+
+[tasks."zizmor"]
+description = "Check GitHub workflows with Zizmor"
+run = "uvx zizmor ."
+
+[tasks."test"]
+description = "Run tests"
+run = [
+  "cargo +1.84 nextest run --workspace",
+  # TODO: this seems to run the same tests as the previous command,
+  # plus the insta tests. Do we need both?
+  "cargo +1.84 insta test --workspace --test-runner nextest",
+]
+
+[tasks."update-cli-help"]
+description = "Update generated CLI help (cli/tests/cli-reference@.md.snap)"
+run = "cargo +1.84 insta test --accept --workspace -- test_generate_md_cli_help"
+
+[tasks."docs:build"]
+description = "Build documentation into rendered-docs/ for offline use"
+run = "uv run mkdocs build -f mkdocs-offline.yml"
+
+[tasks."docs:serve"]
+description = "Preview documentation with live reloading"
+run = "uv run mkdocs serve"
