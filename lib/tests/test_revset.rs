@@ -41,7 +41,7 @@ use jj_lib::ref_name::WorkspaceName;
 use jj_lib::ref_name::WorkspaceNameBuf;
 use jj_lib::repo::Repo;
 use jj_lib::repo_path::RepoPath;
-use jj_lib::repo_path::RepoPathUiConverter;
+use jj_lib::repo_path::{RepoPathUiConverter, SlashChoice};
 use jj_lib::revset::parse;
 use jj_lib::revset::DefaultSymbolResolver;
 use jj_lib::revset::FailingSymbolResolver;
@@ -946,6 +946,7 @@ fn resolve_commit_ids_in_workspace(
     let path_converter = RepoPathUiConverter::Fs {
         cwd: cwd.unwrap_or_else(|| workspace.workspace_root()).to_owned(),
         base: workspace.workspace_root().to_owned(),
+        slash: SlashChoice::Native,
     };
     let workspace_ctx = RevsetWorkspaceContext {
         path_converter: &path_converter,

@@ -53,6 +53,8 @@ use jj_lib::ref_name::WorkspaceNameBuf;
 use jj_lib::repo::Repo;
 use jj_lib::repo_path::RepoPathBuf;
 use jj_lib::repo_path::RepoPathUiConverter;
+#[cfg(test)]
+use jj_lib::repo_path::SlashChoice;
 use jj_lib::revset;
 use jj_lib::revset::Revset;
 use jj_lib::revset::RevsetContainingFn;
@@ -2423,6 +2425,7 @@ mod tests {
             let path_converter = RepoPathUiConverter::Fs {
                 cwd: test_workspace.workspace.workspace_root().to_owned(),
                 base: test_workspace.workspace.workspace_root().to_owned(),
+                slash: SlashChoice::Native,
             };
             // IdPrefixContext::new() expects Arc<RevsetExtensions>
             #[expect(clippy::arc_with_non_send_sync)]
@@ -2444,6 +2447,7 @@ mod tests {
             self.path_converter = RepoPathUiConverter::Fs {
                 cwd: self.test_workspace.workspace.workspace_root().join(path),
                 base: self.test_workspace.workspace.workspace_root().to_owned(),
+                slash: SlashChoice::Native,
             };
         }
 

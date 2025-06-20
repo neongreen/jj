@@ -29,7 +29,7 @@ use jj_lib::fix::FileToFix;
 use jj_lib::fix::FixError;
 use jj_lib::fix::ParallelFileFixer;
 use jj_lib::matchers::Matcher;
-use jj_lib::repo_path::RepoPathUiConverter;
+use jj_lib::repo_path::{RepoPathUiConverter, SlashChoice};
 use jj_lib::settings::UserSettings;
 use jj_lib::store::Store;
 use pollster::FutureExt as _;
@@ -319,6 +319,7 @@ fn get_tools_config(ui: &mut Ui, settings: &UserSettings) -> Result<ToolsConfig,
                             &RepoPathUiConverter::Fs {
                                 cwd: "".into(),
                                 base: "".into(),
+                                slash: SlashChoice::Native,
                             },
                         )
                     })

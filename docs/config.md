@@ -401,6 +401,21 @@ conflict-marker-style = "git"
 For more details about these conflict marker styles, see the [conflicts
 page](conflicts.md#conflict-markers).
 
+### Path separator style
+
+By default, paths in jj's output use the platform-specific separator. Set
+`ui.slash` to control how separators are shown:
+
+```toml
+[ui]
+# use the OS default
+slash = "native"
+# force Unix-style separators
+# slash = "unix"
+# force Windows-style separators
+# slash = "windows"
+```
+
 ### Set of immutable commits
 
 You can configure the set of immutable commits via

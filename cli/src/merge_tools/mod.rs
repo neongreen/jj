@@ -39,6 +39,8 @@ use jj_lib::repo_path::InvalidRepoPathError;
 use jj_lib::repo_path::RepoPath;
 use jj_lib::repo_path::RepoPathBuf;
 use jj_lib::repo_path::RepoPathUiConverter;
+#[cfg(test)]
+use jj_lib::repo_path::SlashChoice;
 use jj_lib::settings::UserSettings;
 use jj_lib::working_copy::SnapshotError;
 use pollster::FutureExt as _;
@@ -772,6 +774,7 @@ mod tests {
             let path_converter = RepoPathUiConverter::Fs {
                 cwd: "".into(),
                 base: "".into(),
+                slash: SlashChoice::Native,
             };
             MergeEditor::with_name(name, &settings, path_converter, ConflictMarkerStyle::Diff)
                 .map(|editor| editor.tool)
@@ -832,6 +835,7 @@ mod tests {
             let path_converter = RepoPathUiConverter::Fs {
                 cwd: "".into(),
                 base: "".into(),
+                slash: SlashChoice::Native,
             };
             MergeEditor::from_settings(&ui, &settings, path_converter, ConflictMarkerStyle::Diff)
                 .map(|editor| editor.tool)
