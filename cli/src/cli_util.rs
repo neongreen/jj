@@ -98,7 +98,7 @@ use jj_lib::repo::StoreFactories;
 use jj_lib::repo::StoreLoadError;
 use jj_lib::repo_path::RepoPath;
 use jj_lib::repo_path::RepoPathBuf;
-use jj_lib::repo_path::RepoPathUiConverter;
+use jj_lib::repo_path::{RepoPathUiConverter, SlashChoice};
 use jj_lib::repo_path::UiPathParseError;
 use jj_lib::revset;
 use jj_lib::revset::ResolvedRevsetExpression;
@@ -800,6 +800,7 @@ impl WorkspaceCommandEnvironment {
         let path_converter = RepoPathUiConverter::Fs {
             cwd: command.cwd().to_owned(),
             base: workspace.workspace_root().to_owned(),
+            slash: settings.get("ui.slash")?,
         };
         let mut env = Self {
             command: command.clone(),
@@ -1366,6 +1367,7 @@ to the current parents may contain changes from multiple commits.
             &RepoPathUiConverter::Fs {
                 cwd: "".into(),
                 base: "".into(),
+                slash: SlashChoice::Native,
             },
         )?;
         print_parse_diagnostics(ui, "In `snapshot.auto-track`", &diagnostics)?;

@@ -54,6 +54,8 @@ use crate::repo::ReadonlyRepo;
 use crate::repo::Repo;
 use crate::repo::RepoLoaderError;
 use crate::repo_path::RepoPathUiConverter;
+#[cfg(test)]
+use crate::repo_path::SlashChoice;
 use crate::revset_parser;
 pub use crate::revset_parser::expect_literal;
 pub use crate::revset_parser::parse_program;
@@ -3162,6 +3164,7 @@ mod tests {
         let path_converter = RepoPathUiConverter::Fs {
             cwd: PathBuf::from("/"),
             base: PathBuf::from("/"),
+            slash: SlashChoice::Native,
         };
         let workspace_ctx = RevsetWorkspaceContext {
             path_converter: &path_converter,

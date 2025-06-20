@@ -582,6 +582,20 @@ pub enum UiPathParseError {
     Fs(FsPathParseError),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize)]
+#[serde(rename_all(deserialize = "kebab-case"))]
+pub enum SlashChoice {
+    Native,
+    Unix,
+    Windows,
+}
+
+impl Default for SlashChoice {
+    fn default() -> Self {
+        SlashChoice::Native
+    }
+}
+
 /// Converts `RepoPath`s to and from plain strings as displayed to the user
 /// (e.g. relative to CWD).
 #[derive(Debug, Clone)]
@@ -591,7 +605,7 @@ pub enum RepoPathUiConverter {
     ///
     /// The `cwd` and `base` paths are supposed to be absolute and normalized in
     /// the same manner.
-    Fs { cwd: PathBuf, base: PathBuf },
+    Fs { cwd: PathBuf, base: PathBuf, slash: SlashChoice },
     // TODO: Add a no-op variant that uses the internal `RepoPath` representation. Can be useful
     // on a server.
 }
@@ -600,10 +614,23 @@ impl RepoPathUiConverter {
     /// Format a path for display in the UI.
     pub fn format_file_path(&self, file: &RepoPath) -> String {
         match self {
-            RepoPathUiConverter::Fs { cwd, base } => {
-                file_util::relative_path(cwd, &file.to_fs_path_unchecked(base))
-                    .display()
-                    .to_string()
+            RepoPathUiConverter::Fs { cwd, base, slash } => {
+                let path = file_util::relative_path(cwd, &file.to_fs_path_unchecked(base));
+                let mut s = path.display().to_string();
+                match slash {
+                    SlashChoice::Native => {}
+                    SlashChoice::Unix => {
+                        if cfg!(windows) {
+                            s = s.replace('\\', "/");
+                        }
+                    }
+                    SlashChoice::Windows => {
+                        if !cfg!(windows) {
+                            s = s.replace('/', "\\");
+                        }
+                    }
+                }
+                s
             }
         }
     }
@@ -619,7 +646,7 @@ impl RepoPathUiConverter {
         }
         let mut formatted = String::new();
         match self {
-            RepoPathUiConverter::Fs { cwd, base } => {
+            RepoPathUiConverter::Fs { cwd, base, slash } => {
                 let source_path = file_util::relative_path(cwd, &source.to_fs_path_unchecked(base));
                 let target_path = file_util::relative_path(cwd, &target.to_fs_path_unchecked(base));
 
@@ -647,29 +674,46 @@ impl RepoPathUiConverter {
                     .min(source_components.len().saturating_sub(1))
                     .min(target_components.len().saturating_sub(1));
 
-                fn format_components(c: &[std::path::Component]) -> String {
-                    c.iter().collect::<PathBuf>().display().to_string()
+                fn format_components(c: &[std::path::Component], slash: SlashChoice) -> String {
+                    let mut s = c.iter().collect::<PathBuf>().display().to_string();
+                    match slash {
+                        SlashChoice::Native => {}
+                        SlashChoice::Unix => {
+                            if cfg!(windows) {
+                                s = s.replace('\\', "/");
+                            }
+                        }
+                        SlashChoice::Windows => {
+                            if !cfg!(windows) {
+                                s = s.replace('/', "\\");
+                            }
+                        }
+                    }
+                    s
                 }
 
                 if prefix_count > 0 {
-                    formatted.push_str(&format_components(&source_components[0..prefix_count]));
+                    formatted.push_str(&format_components(&source_components[0..prefix_count], *slash));
                     formatted.push_str(std::path::MAIN_SEPARATOR_STR);
                 }
                 formatted.push('{');
                 formatted.push_str(&format_components(
                     &source_components
                         [prefix_count..(source_components.len() - suffix_count).max(prefix_count)],
+                    *slash,
                 ));
                 formatted.push_str(" => ");
                 formatted.push_str(&format_components(
                     &target_components
                         [prefix_count..(target_components.len() - suffix_count).max(prefix_count)],
+                    *slash,
                 ));
                 formatted.push('}');
                 if suffix_count > 0 {
                     formatted.push_str(std::path::MAIN_SEPARATOR_STR);
                     formatted.push_str(&format_components(
                         &source_components[source_components.len() - suffix_count..],
+                        *slash,
                     ));
                 }
             }
@@ -683,7 +727,7 @@ impl RepoPathUiConverter {
     /// where relative paths are interpreted as relative to.
     pub fn parse_file_path(&self, input: &str) -> Result<RepoPathBuf, UiPathParseError> {
         match self {
-            RepoPathUiConverter::Fs { cwd, base } => {
+            RepoPathUiConverter::Fs { cwd, base, .. } => {
                 RepoPathBuf::parse_fs_path(cwd, base, input).map_err(UiPathParseError::Fs)
             }
         }
@@ -1154,6 +1198,7 @@ mod tests {
         let ui = RepoPathUiConverter::Fs {
             cwd: PathBuf::from("."),
             base: PathBuf::from("."),
+            slash: SlashChoice::Native,
         };
 
         let format = |before, after| {
@@ -1181,5 +1226,16 @@ mod tests {
         assert_eq!(format("two", "four"), "{two => four}");
         assert_eq!(format("file1", "file2"), "{file1 => file2}");
         assert_eq!(format("file-1", "file-2"), "{file-1 => file-2}");
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_format_file_path_with_slash() {
+        let ui = RepoPathUiConverter::Fs {
+            cwd: PathBuf::from("C:\\repo"),
+            base: PathBuf::from("C:\\repo"),
+            slash: SlashChoice::Unix,
+        };
+        assert_eq!(ui.format_file_path(repo_path("dir/file")), "dir/file");
     }
 }

@@ -105,6 +105,12 @@
                     ],
                     "default": "auto"
                 },
+                "slash": {
+                    "type": "string",
+                    "description": "Path separator style for displayed paths",
+                    "enum": ["native", "unix", "windows"],
+                    "default": "native"
+                },
                 "paginate": {
                     "type": "string",
                     "description": "Whether or not to use a pager",

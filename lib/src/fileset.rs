@@ -47,6 +47,8 @@ use crate::repo_path::RelativePathParseError;
 use crate::repo_path::RepoPath;
 use crate::repo_path::RepoPathBuf;
 use crate::repo_path::RepoPathUiConverter;
+#[cfg(test)]
+use crate::repo_path::SlashChoice;
 use crate::repo_path::UiPathParseError;
 
 /// Error occurred during file pattern parsing.
@@ -528,6 +530,7 @@ mod tests {
         let path_converter = RepoPathUiConverter::Fs {
             cwd: PathBuf::from("/ws/cur"),
             base: PathBuf::from("/ws"),
+            slash: SlashChoice::Native,
         };
         let parse = |text| parse_maybe_bare(&mut FilesetDiagnostics::new(), text, &path_converter);
 
@@ -573,6 +576,7 @@ mod tests {
             // meta character in cwd path shouldn't be expanded
             cwd: PathBuf::from("/ws/cur*"),
             base: PathBuf::from("/ws"),
+            slash: SlashChoice::Native,
         };
         let parse = |text| parse_maybe_bare(&mut FilesetDiagnostics::new(), text, &path_converter);
 
@@ -746,6 +750,7 @@ mod tests {
         let path_converter = RepoPathUiConverter::Fs {
             cwd: PathBuf::from("/ws/cur"),
             base: PathBuf::from("/ws"),
+            slash: SlashChoice::Native,
         };
         let parse = |text| parse_maybe_bare(&mut FilesetDiagnostics::new(), text, &path_converter);
 
@@ -774,6 +779,7 @@ mod tests {
         let path_converter = RepoPathUiConverter::Fs {
             cwd: PathBuf::from("/ws/cur"),
             base: PathBuf::from("/ws"),
+            slash: SlashChoice::Native,
         };
         let parse = |text| parse_maybe_bare(&mut FilesetDiagnostics::new(), text, &path_converter);
 
